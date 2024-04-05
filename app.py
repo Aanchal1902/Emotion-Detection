@@ -1,16 +1,28 @@
-from flask import Flask, render_template, request, session,Response
+from flask import Flask, render_template, request, session,Response, redirect
 from flask_mysqldb import MySQL
 import MySQLdb.cursors
+from isodate import parse_duration
+import requests
 import cv2
 from keras.models import model_from_json
 import numpy as np
 import pickle
+import webbrowser
 from imutils.video import WebcamVideoStream
+
+YOUTUBE_API_KEY= 'AIzaSyAZko-KXF6usQ5yTZHDWxfDrkxz6gyiwBg'
 
 app = Flask(__name__)
 webcam=cv2.VideoCapture(0)
 
+emotions = {'happy': 0, 'sad': 0, 'fear': 0, 'neutral': 0, 'surprise': 0, 'angry': 0, 'disgust': 0}
+emotion_list = []  # Your list of emotions of size 100
+max_elements = 1000
+max_emotion = ''
+global count
+
 def generate_frames():   
+    count=0
     json_file = open('emotiondetector.json', 'r')
     model_json = json_file.read()
     json_file.close()
@@ -27,7 +39,7 @@ def generate_frames():
 
 
     labels = {0:'angry',1:'disgust',2:'fear',3:'happy',4:'neutral',5:'sad',6:'surprise'}
-    while True:
+    while count<=60:
         i,im = webcam.read()
         if not i:
             break
@@ -45,17 +57,78 @@ def generate_frames():
                     #print(prediction_label)
                     #cv2.putText(im, prediction_label)
                     cv2.putText(im,'% s' %(prediction_label), (p-10,q-10), cv2.FONT_HERSHEY_COMPLEX_SMALL, 2, (0,0,255))
+                    while len(emotion_list) < max_elements:
+                        element = str(prediction_label)
+                        if element.lower() == 'done':
+                            break
+                        emotion_list.append(element)
                 
                 ret,buffer = cv2.imencode('.jpg',im)
                 frame = buffer.tobytes()
                 yield(b'--frame\r\n'
                         b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                
+                #printing the list of emotions captured and printing the most recorded emotion
+                #print("Final list:", emotion_list)
+                # Iterate through the list and count each emotion
+                for i in emotion_list:
+                    if i in emotions:
+                        emotions[i] += 1
+                # Find the emotion with the maximum count
+                max_emotion = max(emotions, key=emotions.get)
+                print("The emotion repeated the most is:", max_emotion)
+                count=count+1
+    
             except cv2.error:
                 print('Please check your webcam',cv2.error)
                 break
-            
-            
- 
+    webcam.release()
+    print("This is end of stream")
+    open_youtube(max_emotion)
+    
+
+#========================================================================================================================          
+def open_youtube(max_emotion):
+    search_url = 'https://www.googleapis.com/youtube/v3/search'
+    video_url = 'https://www.googleapis.com/youtube/v3/videos'
+    videos = []
+
+    search_params = {
+            'key' : YOUTUBE_API_KEY,
+            'q' : 'bollywood '+max_emotion+ ' songs',
+            'part' : 'snippet',
+            'maxResults' : 20,
+            'type' : 'video'
+        }
+
+    r = requests.get(search_url, params=search_params)
+
+    results = r.json()['items']
+
+    video_ids = []
+    for result in results:
+        video_ids.append(result['id']['videoId'])
+
+    youtube_url = f'https://www.youtube.com/watch?v={ video_ids[0] }'
+    webbrowser.open_new(youtube_url)
+
+    video_params = {
+            'key' : YOUTUBE_API_KEY,
+            'id' : ','.join(video_ids),
+            'part' : 'snippet,contentDetails',
+            'maxResults' : 20
+        }
+    r = requests.get(video_url, params=video_params)
+    results = r.json()['items']
+    for result in results:
+        video_data = {
+            'id' : result['id'],
+            'url' : f'https://www.youtube.com/watch?v={ result["id"] }',
+            'thumbnail' : result['snippet']['thumbnails']['high']['url'],
+            'duration' : int(parse_duration(result['contentDetails']['duration']).total_seconds() // 60),
+            'title' : result['snippet']['title'],
+        }
+        videos.append(video_data)
 #========================================================================================================================
 @app.route('/')
 @app.route('/index')
@@ -74,9 +147,46 @@ def register():
 def video():
     return Response(generate_frames(),mimetype='multipart/x-mixed-replace;boundary=frame')
 #=======================================================================================================================
-@app.route('/feedback')
-def feedback():
-    return render_template("feedback.html")
+@app.route('/Listing')
+def Listing():
+    search_url = 'https://www.googleapis.com/youtube/v3/search'
+    video_url = 'https://www.googleapis.com/youtube/v3/videos'
+    videos = []
+    print("The max emotion is: ", max_emotion)
+    search_params = {
+            'key' : YOUTUBE_API_KEY,
+            'q' : 'bollywood '+max_emotion+ ' songs',
+            'part' : 'snippet',
+            'maxResults' : 20,
+            'type' : 'video'
+        }
+
+    r = requests.get(search_url, params=search_params)
+
+    results = r.json()['items']
+
+    video_ids = []
+    for result in results:
+        video_ids.append(result['id']['videoId'])
+
+    video_params = {
+            'key' : YOUTUBE_API_KEY,
+            'id' : ','.join(video_ids),
+            'part' : 'snippet,contentDetails',
+            'maxResults' : 20
+        }
+    r = requests.get(video_url, params=video_params)
+    results = r.json()['items']
+    for result in results:
+        video_data = {
+            'id' : result['id'],
+            'url' : f'https://www.youtube.com/watch?v={ result["id"] }',
+            'thumbnail' : result['snippet']['thumbnails']['high']['url'],
+            'duration' : int(parse_duration(result['contentDetails']['duration']).total_seconds() // 60),
+            'title' : result['snippet']['title'],
+        }
+        videos.append(video_data)
+    return render_template("index1.html",videos=videos)
 #========================================================================================================================
 
 if __name__ =="__main__":
