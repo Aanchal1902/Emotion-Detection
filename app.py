@@ -30,7 +30,7 @@ def generate_frames():
 
     model.load_weights('emotiondetector.h5')
     haar_file = cv2.data.haarcascades+ 'haarcascade_frontalface_default.xml'
-    face_cascade = cv2.CascadeClassifier("C:/Python39/Lib/site-packages/cv2/data/haarcascade_frontalface_default.xml")
+    face_cascade = cv2.CascadeClassifier("C:/Users/Ratan singh/AppData/Roaming/Python/Python39/site-packages/cv2/data/haarcascade_frontalface_default.xml")
 
     def extract_features(image):
         feature = np.array(image)
